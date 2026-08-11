@@ -22,11 +22,20 @@ export type ScrollState = {
   bootLock: boolean;
   /** First real frame has been rendered by the R3F canvas. */
   canvasReady: boolean;
+  /**
+   * Whether the canvas is still on screen. The handoff fades the wrapper with
+   * autoAlpha, and `visibility: hidden` only stops COMPOSITING — WebGL happily
+   * keeps drawing the whole scene behind the rest of the page. This rides the
+   * store rather than route state so the canvas subtree stays render-stable
+   * (see the leaf-component note in proto.caldera.tsx).
+   */
+  canvasVisible: boolean;
   setProgress: (p: number) => void;
   setPointer: (x: number, y: number) => void;
   setReducedMotion: (v: boolean) => void;
   setBootLock: (v: boolean) => void;
   setCanvasReady: () => void;
+  setCanvasVisible: (v: boolean) => void;
 };
 
 export const useScrollStore = create<ScrollState>((set) => ({
@@ -36,11 +45,13 @@ export const useScrollStore = create<ScrollState>((set) => ({
   reducedMotion: false,
   bootLock: false,
   canvasReady: false,
+  canvasVisible: true,
   setProgress: (p) => set({ progress: p }),
   setPointer: (x, y) => set({ pointer: { x, y }, pointerActive: true }),
   setReducedMotion: (v) => set({ reducedMotion: v }),
   setBootLock: (v) => set({ bootLock: v }),
   setCanvasReady: () => set({ canvasReady: true }),
+  setCanvasVisible: (v) => set({ canvasVisible: v }),
 }));
 
 /**

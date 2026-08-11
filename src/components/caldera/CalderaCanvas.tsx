@@ -1,5 +1,5 @@
-import { Suspense, lazy, useRef } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Suspense, lazy, useEffect, useRef } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { Terrain } from "./Terrain";
 import { Embers } from "./Embers";
@@ -39,6 +39,22 @@ function ReadySignal() {
 }
 
 /**
+ * Parks the render loop while the canvas is off screen. A leaf INSIDE the
+ * canvas on purpose: it subscribes to the store here rather than in the route
+ * body, which would re-render the whole <Canvas> subtree (see the note in
+ * proto.caldera.tsx). Nothing on screen changes when this flips — the GPU just
+ * stops redrawing 1.6M triangles that nobody can see.
+ */
+function RenderGate() {
+  const setFrameloop = useThree((s) => s.setFrameloop);
+  const visible = useScrollStore((s) => s.canvasVisible);
+  useEffect(() => {
+    setFrameloop(visible ? "always" : "never");
+  }, [visible, setFrameloop]);
+  return null;
+}
+
+/**
  * PRD §5.2: ONE canvas, fixed behind the DOM. It renders with alpha so the
  * hero wordmark — real DOM text underneath — is physically occluded by the
  * crater rim, which is the "text in the world" trick without giving up SEO.
@@ -52,6 +68,8 @@ export type CalderaCanvasProps = {
   post?: boolean;
   /** Sandbox bitmask for isolating effect cost: 1 bloom, 2 tonemap, 4 CA, 8 grain, 16 vignette. */
   fx?: number;
+  /** Sandbox only: `?parts=0` drops the wordmark cloud to price its overdraw. */
+  parts?: boolean;
 };
 
 export function CalderaCanvas({
@@ -62,6 +80,7 @@ export function CalderaCanvas({
   dpr = [1, 1.75],
   post = true,
   fx = 31,
+  parts = true,
 }: CalderaCanvasProps) {
   return (
     <Canvas
@@ -79,8 +98,9 @@ export function CalderaCanvas({
       camera={{ fov: 20, near: 0.1, far: 400, position: [0, 44, 53] }}
       onCreated={({ gl }) => gl.setClearAlpha(0)}
     >
+      <RenderGate />
       <ScrollCamera />
-      <WordmarkParticles />
+      {parts && <WordmarkParticles />}
       <Terrain segments={segments} />
       <Embers />
       <HandoffVeil />

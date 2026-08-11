@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -11,6 +11,7 @@ import { ScrubVideo } from "#/components/site/ScrubVideo";
 import { SiteFooter } from "#/components/site/SiteFooter";
 import { SiteNav } from "#/components/site/SiteNav";
 import { StaticHero } from "#/components/site/StaticHero";
+import { useScrollStore } from "#/lib/scroll-store";
 import { usePointerRig, useScrollRig } from "#/lib/useScrollRig";
 import { useTierC } from "#/lib/useTier";
 
@@ -89,12 +90,45 @@ const METHOD = [
 function Landing() {
   const tierC = useTierC();
   const calderaRef = useRef<HTMLDivElement>(null);
-  const canvasWrapRef = useRef<HTMLDivElement>(null);
+  // State, not a ref: the wrapper lives inside <ClientOnly>, which renders null
+  // until its own mount effect runs. A ref would still be null when the GSAP
+  // effect below fires, which is exactly why the canvas cross-fade never got
+  // built — `if (wrap && track)` was silently false on every load. Holding the
+  // node in state re-runs that effect once, when the node actually exists.
+  const [canvasWrap, setCanvasWrap] = useState<HTMLDivElement | null>(null);
+  const moRef = useRef<MutationObserver | null>(null);
 
   useScrollRig({ track: calderaRef });
   usePointerRig();
 
   const thesisRef = useRef<HTMLDivElement>(null);
+
+  // Park the render loop once the handoff has faded the canvas out, so the
+  // scene stops drawing behind the whole rest of the page. This watches the
+  // RESULT of the autoAlpha tween below rather than recomputing its scroll
+  // math, so the two can never drift apart.
+  //
+  // The visibility itself rides the store, not route state, because route-body
+  // state re-renders the <Canvas> subtree (see the note in proto.caldera.tsx).
+  const observeCanvasWrap = useCallback((wrap: HTMLDivElement | null) => {
+    setCanvasWrap(wrap);
+    moRef.current?.disconnect();
+    if (!wrap) {
+      useScrollStore.getState().setCanvasVisible(true);
+      return;
+    }
+    const read = () => {
+      const cs = getComputedStyle(wrap);
+      useScrollStore
+        .getState()
+        .setCanvasVisible(cs.visibility !== "hidden" && Number(cs.opacity) > 0.01);
+    };
+    read();
+    const mo = new MutationObserver(read);
+    mo.observe(wrap, { attributes: true, attributeFilter: ["style", "class"] });
+    moRef.current = mo;
+  }, []);
+  useEffect(() => () => moRef.current?.disconnect(), []);
 
   useEffect(() => {
     if (tierC) return;
@@ -142,10 +176,9 @@ function Landing() {
       // frame to page obsidian, so the fixed canvas can cross-fade away under
       // the arriving sections instead of being hard-occluded by them. Scrubbed,
       // so scrolling back re-lights the scene symmetrically.
-      const wrap = canvasWrapRef.current;
-      if (wrap && track) {
+      if (canvasWrap && track) {
         gsap.fromTo(
-          wrap,
+          canvasWrap,
           { autoAlpha: 1 },
           {
             autoAlpha: 0,
@@ -178,7 +211,7 @@ function Landing() {
     }, root.ownerDocument.body);
 
     return () => ctx.revert();
-  }, [tierC]);
+  }, [tierC, canvasWrap]);
 
   return (
     // No `text-pumice` here any more: it hard-set one colour on every
@@ -212,7 +245,7 @@ function Landing() {
           </ClientOnly>
 
           <ClientOnly>
-            <div ref={canvasWrapRef} className="fixed inset-0 z-10">
+            <div ref={observeCanvasWrap} className="fixed inset-0 z-10">
               <Suspense fallback={null}>
                 <CalderaCanvas post segments={896} />
               </Suspense>

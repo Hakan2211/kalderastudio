@@ -7,13 +7,17 @@ import { StatsHud } from "#/components/caldera/StatsHud";
 import { ClientOnly } from "#/components/ClientOnly";
 import { usePointerRig, useScrollRig } from "#/lib/useScrollRig";
 
-type ProtoSearch = { post?: number; seg?: number; fx?: number };
+type ProtoSearch = { post?: number; seg?: number; fx?: number; parts?: number };
 
 export const Route = createFileRoute("/proto/caldera")({
   validateSearch: (s: Record<string, unknown>): ProtoSearch => ({
     post: s.post === undefined ? undefined : Number(s.post),
     seg: s.seg === undefined ? undefined : Number(s.seg),
     fx: s.fx === undefined ? undefined : Number(s.fx),
+    // `?parts=0` drops the wordmark cloud. Segments only bill vertex work, so
+    // it is the only way to separate the two per-pixel costs in this scene:
+    // the terrain's fragment shader and the cloud's overdraw.
+    parts: s.parts === undefined ? undefined : Number(s.parts),
   }),
   component: CalderaProto,
   head: () => ({
@@ -49,7 +53,7 @@ const THESIS = [
 ];
 
 function CalderaProto() {
-  const { post, seg, fx } = Route.useSearch();
+  const { post, seg, fx, parts } = Route.useSearch();
   useScrollRig();
   usePointerRig();
 
@@ -94,7 +98,12 @@ function CalderaProto() {
 
       <ClientOnly>
         <div className="fixed inset-0 z-10">
-          <CalderaCanvas post={post !== 0} segments={seg ?? 896} fx={fx} />
+          <CalderaCanvas
+            post={post !== 0}
+            segments={seg ?? 896}
+            fx={fx}
+            parts={parts !== 0}
+          />
         </div>
       </ClientOnly>
 
