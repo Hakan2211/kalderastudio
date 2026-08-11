@@ -1,0 +1,450 @@
+@import "tailwindcss";
+
+/* ── Self-hosted faces (P3): latin subsets, one file per family ─────
+   "Archivo Expanded" is the Archivo variable font pinned at wdth 125 /
+   wght 900 — the display face the PRD's free-fallback stack was naming
+   without ever loading. The family is REGISTERED under the expanded
+   name so every existing stack (and the wordmark's canvas raster, which
+   matches by family string) picks up the real face with no other change. */
+@font-face {
+  font-family: "Archivo Expanded";
+  font-style: normal;
+  font-weight: 900;
+  font-stretch: 125%;
+  font-display: block; /* the hero raster waits on it — never paint fallback letterforms */
+  src: url("/fonts/archivo.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("/fonts/jbmono.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212;
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212;
+}
+
+/* ── KALDERA design tokens (PRD §2.3, LOCKED 2026-08-07) ───────────── */
+@theme {
+  --color-obsidian: #0b0b0d;
+  --color-basalt: #1a1b1e;
+  --color-charcoal: #2a2c30;
+  --color-ash: #3c3f45;
+  --color-ash-lit: #8a8d93;
+  --color-pumice: #e8e5df;
+  --color-ember: #ff551f;
+  --color-magma-deep: #8c1d04;
+  --color-heat-white: #ffd9a0;
+
+  --font-display:
+    "Archivo Expanded", "Anton", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Motion: geological — mass, never bounce (PRD §2.5) */
+  --ease-mass: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Type scale ───────────────────────────────────────────────────────
+   Fluid, so the page has ONE composition instead of three that snap at
+   breakpoints. Each step is clamp(min, preferred, max) where the
+   preferred term is a rem base plus a vw slope — the rem keeps the scale
+   honest when the user zooms (a pure-vw scale ignores zoom entirely and
+   is a genuine accessibility failure), and the vw does the fitting.
+
+   The display steps run much steeper than the body steps on purpose:
+   headlines are a picture and should fill their frame, body copy is read
+   at roughly the same size on every device and should barely move. */
+:root {
+  --type-xs: clamp(0.7rem, 0.67rem + 0.14vw, 0.8rem);
+  --type-sm: clamp(0.875rem, 0.85rem + 0.13vw, 0.95rem);
+  --type-base: clamp(1rem, 0.955rem + 0.22vw, 1.125rem);
+  --type-lede: clamp(1.125rem, 1.02rem + 0.5vw, 1.4rem);
+  --type-h3: clamp(1.5rem, 1.28rem + 1.05vw, 2.25rem);
+  --type-h2: clamp(2.75rem, 1.55rem + 5.6vw, 6.5rem);
+  --type-h1: clamp(3.5rem, 1.9rem + 7.4vw, 9rem);
+
+  /* Text colour ROLES, not opacities. `text-pumice/70` was doing three
+     different jobs at three different sites and none of them were
+     checked; these are, and every one clears WCAG AA on obsidian. */
+  --text-primary: #f2efe9; /* 17.4:1 — headlines and lead copy */
+  --text-body: #d9d4cc; /* 13.6:1 — running copy */
+  --text-muted: #9e9a93; /*  7.1:1 — captions, labels, meta */
+  --text-faint: #6f6c67; /*  3.6:1 — decorative only, never prose */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+html {
+  background: var(--color-obsidian);
+}
+
+body {
+  margin: 0;
+  background: var(--color-obsidian);
+  color: var(--text-body);
+  font-family: var(--font-body);
+  font-size: var(--type-base);
+  line-height: 1.62;
+  /* Inter is drawn a touch loose for screen at text sizes; a hair of
+     negative tracking is what makes it set like a book rather than like a
+     UI label. */
+  letter-spacing: -0.008em;
+  /* Light-on-dark is the case where synthetic smoothing hurts most —
+     antialiased/grayscale stops the subpixel filter from fattening every
+     stem, which is the real reason the copy was reading as low contrast. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Lenis */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--color-ember);
+  color: var(--color-obsidian);
+}
+
+/* ── Type utilities ─────────────────────────────────────────────────── */
+
+.u-display {
+  font-family: var(--font-display);
+  font-weight: 900;
+  line-height: 0.84;
+  /* An expanded 900 already carries its own air. At display size the
+     default sidebearings read as gaps, so the tracking closes up — and it
+     has to close FURTHER the bigger the type gets, which is what the
+     per-step overrides below do. */
+  letter-spacing: -0.022em;
+  color: var(--text-primary);
+  text-wrap: balance;
+  font-synthesis: none;
+}
+
+/* Display steps. Use these instead of hand-picked text-5xl/md:text-7xl
+   pairs: one fluid curve per role, so a headline is the same size
+   decision everywhere it appears. */
+.u-h1 {
+  font-size: var(--type-h1);
+  letter-spacing: -0.035em;
+}
+.u-h2 {
+  font-size: var(--type-h2);
+  letter-spacing: -0.028em;
+}
+.u-h3 {
+  font-size: var(--type-h3);
+  letter-spacing: -0.018em;
+  line-height: 0.94;
+}
+
+/* Lead paragraph: the one under a headline. Larger, brighter and set to a
+   short measure so it reads as part of the headline's block. */
+.u-lede {
+  font-size: var(--type-lede);
+  line-height: 1.45;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+  max-width: 34ch;
+  text-wrap: pretty;
+}
+
+/* Running copy. `max-width` in ch, not px: the measure that matters is
+   characters per line (~66 is the target), and that follows the font size
+   automatically when the size is fluid. */
+.u-copy {
+  color: var(--text-body);
+  line-height: 1.65;
+  max-width: 66ch;
+  text-wrap: pretty;
+}
+
+.u-muted {
+  color: var(--text-muted);
+}
+
+/* The thesis lines: one sentence alone in the frame. Set in the BODY face,
+   not the display one — Archivo Expanded 900 at this size would shout, and
+   these three lines are the studio talking, not its logo. Big, tight and
+   full-contrast is what makes them read as a statement rather than as a
+   caption that grew. */
+.u-statement {
+  font-size: clamp(1.75rem, 1.02rem + 3.3vw, 3.85rem);
+  line-height: 1.06;
+  letter-spacing: -0.034em;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────
+   The page's own depth gauge. It is on screen for the entire scroll, so
+   leaving it at the OS default was the one un-art-directed element in the
+   frame.
+
+   The two syntaxes are NOT complementary, they are exclusive. Where both
+   apply — Chrome 121+ — the standard `scrollbar-width`/`scrollbar-color`
+   pair WINS and the whole `::-webkit-scrollbar` block is dropped, and the
+   standard pair can only express two flat colours and three widths. So
+   setting both unconditionally means throwing away the good version on
+   the browsers that could render it. The standard properties are fenced
+   behind a Firefox-only query instead: Firefox gets the two-colour
+   fallback, everything Blink/WebKit gets the real thing. */
+@supports (-moz-appearance: none) {
+  html {
+    scrollbar-width: auto;
+    scrollbar-color: var(--color-ash) #101013;
+  }
+}
+
+html {
+  /* No layout jump when a route is shorter than the viewport. */
+  scrollbar-gutter: stable;
+}
+
+::-webkit-scrollbar {
+  width: 13px;
+  height: 13px;
+}
+::-webkit-scrollbar-track {
+  background: #101013;
+  border-left: 1px solid var(--color-basalt);
+}
+::-webkit-scrollbar-thumb {
+  /* Cooling basalt at rest: the thumb is a core sample with heat banked in
+     it. `background-clip: content-box` over a transparent border is the
+     only way to inset a WebKit thumb — the element takes no margin — and
+     the second layer, clipped to border-box, is what shows through that
+     inset as the ember halo. It has to be strong: 3px of 20%-alpha ember
+     over near-black is a colour nobody can see. */
+  background:
+    linear-gradient(180deg, var(--color-ash) 0%, var(--color-charcoal) 100%)
+      content-box,
+    linear-gradient(180deg, rgba(255, 85, 31, 0.55), rgba(140, 29, 4, 0.3))
+      border-box;
+  border: 2px solid transparent;
+  border-radius: 7px;
+  transition: background 0.25s var(--ease-mass);
+}
+::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(180deg, var(--color-ember) 0%, var(--color-magma-deep) 100%)
+      content-box,
+    linear-gradient(180deg, rgba(255, 217, 160, 0.9), rgba(255, 85, 31, 0.45))
+      border-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background:
+    linear-gradient(180deg, var(--color-heat-white) 0%, var(--color-ember) 100%)
+      content-box,
+    rgba(255, 217, 160, 0.85) border-box;
+}
+/* The little arrow buttons cannot be styled into anything that belongs
+   here, and the corner square defaults to system grey — kill both. */
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-corner {
+  background: var(--color-obsidian);
+}
+
+/* Horizontal strips: keep the scrollbar, lose the glare. */
+.u-strip {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-charcoal) transparent;
+}
+.u-strip::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.u-strip::-webkit-scrollbar-track {
+  background: transparent;
+  border: 0;
+}
+.u-strip::-webkit-scrollbar-thumb {
+  background: var(--color-charcoal);
+  border: 0;
+  border-radius: 3px;
+}
+.u-strip::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ash);
+}
+
+/* Forge slabs (Scene 3): footage framed as hot glass — an ember glow
+   creeping in from the bottom edge, obsidian everywhere else. */
+.u-slab {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-charcoal);
+  background: var(--color-obsidian);
+}
+.u-slab::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 85, 31, 0.55),
+    inset 0 -24px 48px -24px rgba(255, 85, 31, 0.28);
+}
+
+/* The instrument label. Was 10px at #8a8d93 — under the 11px floor where
+   uppercase mono stops being readable at a glance, and the one place on
+   the page that genuinely failed on contrast. Now it sits on the fluid
+   scale, a step brighter, with the tracking opened to match: wide
+   letterspacing needs SIZE to stay legible, not less of it. */
+.u-mono {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.2em;
+  /* Uppercase + heavy tracking leaves a hole after the last glyph; the
+     negative margin pulls the optical edge back onto the grid. */
+  margin-right: -0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── P5 polish ───────────────────────────────────────────────────────── */
+
+/* The ember-dot cursor replaces the native one only once it is actually
+   running (the class is set by <EmberCursor/> after its own capability
+   checks) — a CSS-only `cursor: none` would blind touch and reduced-motion
+   users if the script never mounted. */
+html.has-ember-cursor,
+html.has-ember-cursor * {
+  cursor: none;
+}
+/* …except where the caret IS the affordance. */
+html.has-ember-cursor input,
+html.has-ember-cursor textarea,
+html.has-ember-cursor [contenteditable="true"] {
+  cursor: text;
+}
+
+/* Magnetic hover (`UI detail moodboard`): the pull lives in JS, the glow
+   lives here. One lit element at a time — the rule from the ref frame. */
+[data-magnetic] {
+  transition:
+    box-shadow 0.35s var(--ease-mass),
+    border-color 0.35s var(--ease-mass);
+}
+[data-magnetic]:hover {
+  box-shadow:
+    0 0 0 1px rgba(255, 85, 31, 0.35),
+    0 0 24px -4px rgba(255, 85, 31, 0.45);
+}
+
+/* Keyboard users get the same lit state the pointer gets — visible against
+   obsidian, and never on a mouse click (`:focus-visible`, not `:focus`). */
+:focus-visible {
+  outline: 1px solid var(--color-ember);
+  outline-offset: 3px;
+}
+
+/* The descent cue (<ScrollCue/>). One drop of magma falling down a cold rail,
+   with the chevrons under it pulsing in cascade. Long, unhurried loops on the
+   mass ease — a fast blinking arrow would be the one impatient thing on an
+   otherwise geological page. */
+.u-cue-drop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    var(--color-magma-deep) 35%,
+    var(--color-ember) 100%
+  );
+  box-shadow: 0 0 10px rgba(255, 85, 31, 0.7);
+  animation: cue-fall 2.6s var(--ease-mass) infinite;
+}
+@keyframes cue-fall {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  22% {
+    opacity: 1;
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(250%);
+    opacity: 0;
+  }
+}
+
+.u-cue-chevron {
+  animation: cue-pulse 2.6s var(--ease-mass) infinite;
+}
+@keyframes cue-pulse {
+  0%,
+  55%,
+  100% {
+    opacity: 0.22;
+    transform: rotate(45deg) translateY(0);
+  }
+  25% {
+    opacity: 1;
+    transform: rotate(45deg) translateY(1px);
+  }
+}
+
+/* Skip link: off-screen until focused, then a real ember-lit control. */
+.u-skip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  transform: translateY(-120%);
+  background: var(--color-obsidian);
+  border: 1px solid var(--color-ember);
+  color: var(--color-pumice);
+  padding: 10px 16px;
+  text-decoration: none;
+  transition: transform 0.25s var(--ease-mass);
+}
+.u-skip:focus-visible {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
