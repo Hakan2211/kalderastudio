@@ -1,21 +1,26 @@
-import { useRef } from "react";
+import { Suspense, lazy, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import {
-  Bloom,
-  ChromaticAberration,
-  EffectComposer,
-  Noise,
-  ToneMapping,
-  Vignette,
-} from "@react-three/postprocessing";
-import { BlendFunction, ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
 import { Terrain } from "./Terrain";
 import { Embers } from "./Embers";
 import { HandoffVeil } from "./HandoffVeil";
 import { ScrollCamera } from "./ScrollCamera";
 import { WordmarkParticles } from "./WordmarkParticles";
-import { heatForProgress, useScrollStore } from "#/lib/scroll-store";
+import { useScrollStore } from "#/lib/scroll-store";
+
+// postprocessing + its wrapper are ~250 kB raw that three/fiber do not need in
+// order to draw. Splitting them here lets both chunks come down the wire at the
+// same time instead of the browser parsing one megabyte before the first frame.
+//
+// React does not request this chunk until the Suspense boundary below first
+// renders, which lands after the 896-segment terrain build — measured ~7s into
+// a cold load. Hoisting the import to module scope to overlap that gap is
+// tempting and untested; it is left alone because the chunk is ~1 kB and Vite
+// already modulepreloads the 250 kB postprocessing chunk beside index.js, so
+// the only cost here is one round trip for the shim.
+const CalderaPost = lazy(() =>
+  import("./CalderaPost").then((m) => ({ default: m.CalderaPost })),
+);
 
 /**
  * Reports the first RENDERED frame to the store — the preloader's real
@@ -39,25 +44,6 @@ function ReadySignal() {
  * crater rim, which is the "text in the world" trick without giving up SEO.
  */
 
-/** Chromatic aberration only ramps in during the descent (PRD §5.1). */
-function HeatDrivenAberration() {
-  const ref = useRef<{ offset: THREE.Vector2 }>(null);
-  useFrame(() => {
-    if (!ref.current) return;
-    const heat = heatForProgress(useScrollStore.getState().progress);
-    const a = 0.00035 + heat * 0.0012;
-    ref.current.offset.set(a, a * 0.6);
-  });
-  return (
-    <ChromaticAberration
-      ref={ref as never}
-      offset={new THREE.Vector2(0.0004, 0.0002)}
-      radialModulation
-      modulationOffset={0.35}
-    />
-  );
-}
-
 export type CalderaCanvasProps = {
   /** Terrain resolution — lower for the tier-B ladder (PRD §5.4). */
   segments?: number;
@@ -77,7 +63,6 @@ export function CalderaCanvas({
   post = true,
   fx = 31,
 }: CalderaCanvasProps) {
-  const on = (bit: number) => (fx & bit) !== 0;
   return (
     <Canvas
       className="!fixed inset-0"
@@ -94,41 +79,27 @@ export function CalderaCanvas({
       camera={{ fov: 20, near: 0.1, far: 400, position: [0, 44, 53] }}
       onCreated={({ gl }) => gl.setClearAlpha(0)}
     >
-      <ReadySignal />
       <ScrollCamera />
       <WordmarkParticles />
       <Terrain segments={segments} />
       <Embers />
       <HandoffVeil />
 
-      {post && (
-      <EffectComposer enableNormalPass={false} multisampling={0}>
-        <>
-          {on(1) && (
-            // Threshold 0.95, not 0.15. Bloom is for the VEINS — they run at
-            // 13-22x white and are meant to blow. The wordmark is pumice
-            // (#EBE5DF, luminance ~0.9) and at a low threshold it bloomed
-            // too, wrapping the type in a soft halo that read as a cheap
-            // glow filter and cost the letterforms their edge. Sitting the
-            // threshold just above paper-white lets the emissive through and
-            // leaves everything that is merely LIT alone.
-            <Bloom
-              intensity={1.6}
-              luminanceThreshold={0.95}
-              luminanceSmoothing={0.35}
-              mipmapBlur
-              radius={0.82}
-            />
-          )}
-          {on(2) && <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />}
-          {on(4) && <HeatDrivenAberration />}
-          {on(8) && (
-            <Noise premultiply blendFunction={BlendFunction.OVERLAY} opacity={0.42} />
-          )}
-          {on(16) && <Vignette offset={0.18} darkness={1.05} eskil={false} />}
-        </>
-      </EffectComposer>
-      )}
+      {/* ReadySignal sits INSIDE the boundary on purpose. With post on it must
+          not report a frame until the effects are actually live, or the
+          preloader lifts on an ungraded scene and bloom snaps in a beat later;
+          suspending it alongside CalderaPost keeps the handoff honest. With
+          post off there is nothing to wait for and it mounts immediately. */}
+      <Suspense fallback={null}>
+        {post ? (
+          <>
+            <CalderaPost fx={fx} />
+            <ReadySignal />
+          </>
+        ) : (
+          <ReadySignal />
+        )}
+      </Suspense>
     </Canvas>
   );
 }
