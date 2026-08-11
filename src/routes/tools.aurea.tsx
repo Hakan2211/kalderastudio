@@ -1,11 +1,21 @@
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SiteFooter } from "#/components/site/SiteFooter";
 import { SiteNav } from "#/components/site/SiteNav";
 import { ScrubVideo } from "#/components/site/ScrubVideo";
 import { RegTicks, SpecRow, Stat, StatusDot, useReveals } from "#/components/tools/kit";
+import { getAureaBuild, type PlatformBuild, type PlatformId } from "#/lib/aurea-release";
 
 export const Route = createFileRoute("/tools/aurea")({
   component: AureaPage,
+  /**
+   * The build the buttons offer is resolved from GitHub Releases at render
+   * time, so publishing a new installer needs no edit here. The loader's own
+   * result is cached for a minute on top of the server-side cache, so moving
+   * between pages does not re-ask.
+   */
+  loader: () => getAureaBuild(),
+  staleTime: 60_000,
   head: () => ({
     meta: [
       { title: "Aurea: the desktop studio for cinematic AI video" },
@@ -19,26 +29,121 @@ export const Route = createFileRoute("/tools/aurea")({
 });
 
 /**
- * The build. Everything the download button says lives here, so shipping a new
- * version is one edit in one place.
- *
- * Facts taken from the app repo's own packaging config
- * (apps/desktop/electron-builder.yml): the only target is `nsis`, so Windows
- * only, and `forceCodeSigning: false` means the installer is unsigned and
- * SmartScreen will say so. The page says both out loud rather than letting a
- * visitor discover them at the security prompt.
- *
- * `href` points at the releases page rather than a pinned asset filename, so a
- * new version does not 404 the button. Swap it for the direct
- * `.../releases/download/vX/Aurea-Setup-X.exe` asset URL if you would rather
- * the click start the file immediately.
+ * Which button to light up first. The server has no idea what the visitor is
+ * running, so SSR commits to the first platform and the real answer arrives
+ * after mount — an effect, not a render-time read, so hydration still matches
+ * the markup the server sent.
  */
-const BUILD = {
-  href: "https://github.com/Hakan2211/aurea/releases/latest",
-  version: "0.0.1",
-  platform: "Windows · 64-bit",
-  size: "NSIS installer",
-};
+function useDetectedPlatform(): PlatformId | null {
+  const [detected, setDetected] = useState<PlatformId | null>(null);
+
+  useEffect(() => {
+    // userAgentData is the honest source where it exists; Safari and Firefox
+    // have not shipped it, and those are exactly the Mac browsers that matter,
+    // hence the userAgent fallback.
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+    const hint = `${nav.userAgentData?.platform ?? ""} ${navigator.userAgent}`;
+    setDetected(/mac|iphone|ipad|ipod/i.test(hint) ? "mac" : "windows");
+  }, []);
+
+  return detected;
+}
+
+/**
+ * The download, used twice — once with the hero and once at the foot of the
+ * page, so whoever read the whole tour does not scroll back up. Only ever
+ * rendered for a platform that has a real asset behind it.
+ */
+function DownloadButton({ platform, compact }: { platform: PlatformBuild; compact?: boolean }) {
+  return (
+    <a
+      href={platform.href}
+      // A cross-origin `download` attribute is ignored by browsers; GitHub's
+      // asset URLs already serve Content-Disposition: attachment, so the click
+      // starts the file rather than navigating away.
+      data-magnetic
+      className={`group inline-flex items-baseline gap-3 border border-ember/60 ${
+        compact ? "px-6" : "px-7"
+      } py-4 text-pumice no-underline transition-colors hover:border-ember`}
+      style={{
+        boxShadow: compact
+          ? "0 0 24px -8px rgba(255,85,31,0.45)"
+          : "0 0 28px -8px rgba(255,85,31,0.5)",
+      }}
+    >
+      <span className="u-mono !text-ember">Download for {platform.label}</span>
+      {compact && <span className="u-mono opacity-50">{platform.spec}</span>}
+      <span className="text-ember transition-transform group-hover:translate-y-0.5">↓</span>
+    </a>
+  );
+}
+
+/**
+ * The standing state before the first release: no version, no size, no invented
+ * platform — just the door to the repo, so the page never offers a download it
+ * does not have.
+ */
+function NoBuildYet({ releasesUrl }: { releasesUrl: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-8 gap-y-5">
+      <a
+        href={releasesUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-magnetic
+        className="group inline-flex items-baseline gap-3 border border-ember/60 px-7 py-4 text-pumice no-underline transition-colors hover:border-ember"
+        style={{ boxShadow: "0 0 28px -8px rgba(255,85,31,0.5)" }}
+      >
+        <span className="u-mono !text-ember">Aurea releases</span>
+        <span className="text-ember transition-transform group-hover:translate-x-1">↗</span>
+      </a>
+      <div className="u-mono opacity-55">
+        No public build posted yet · the first installer lands here
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The platform switch, shown only when there is genuinely a choice. A Mac
+ * visitor lands on macOS already selected, but the row stays visible either
+ * way: people download for the machine in the next room as often as the one
+ * they are sitting at.
+ */
+function PlatformSwitch({
+  platforms,
+  active,
+  onSelect,
+}: {
+  platforms: Array<PlatformBuild>;
+  active: PlatformId;
+  onSelect: (id: PlatformId) => void;
+}) {
+  if (platforms.length < 2) return null;
+
+  return (
+    <div className="u-mono mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
+      {platforms.map((p) => {
+        const isActive = p.id === active;
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onSelect(p.id)}
+            aria-pressed={isActive}
+            className={`border-b pb-1 transition-colors ${
+              isActive
+                ? "border-ember !text-ember"
+                : "border-transparent opacity-55 hover:border-charcoal hover:opacity-90"
+            }`}
+          >
+            {p.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /* DIRECT / BOARD / RENDER — the pipeline as three numbered moves. */
 const MOVES = [
@@ -268,6 +373,24 @@ function GraphVsRooms() {
 
 function AureaPage() {
   const ref = useReveals();
+  const build = Route.useLoaderData();
+
+  // Only platforms with a real asset are offered; an unbuilt one is not shown
+  // at all rather than advertised as missing.
+  const offered = build.platforms.filter((p) => p.available);
+
+  // Explicit choice wins over detection, and detection wins over the SSR
+  // default — so a Mac visitor who clicked "Windows" to grab the installer for
+  // another machine does not get silently switched back when the effect lands.
+  // Detection is ignored when that platform has no build: a Mac visitor is
+  // shown the Windows installer that exists, not an empty state.
+  const [chosen, setChosen] = useState<PlatformId | null>(null);
+  const detected = useDetectedPlatform();
+  const active =
+    offered.find((p) => p.id === chosen) ??
+    offered.find((p) => p.id === detected) ??
+    offered[0] ??
+    null;
 
   return (
     <main id="main" ref={ref} className="relative min-h-screen bg-obsidian text-pumice">
@@ -298,27 +421,29 @@ function AureaPage() {
 
           {/* The download is the page's reason to exist, so it sits with the
               hero rather than at the bottom of the tour. */}
-          <div className="mt-12 flex flex-wrap items-center gap-x-8 gap-y-5">
-            <a
-              href={BUILD.href}
-              data-magnetic
-              className="group inline-flex items-baseline gap-3 border border-ember/60 px-7 py-4 text-pumice no-underline transition-colors hover:border-ember"
-              style={{ boxShadow: "0 0 28px -8px rgba(255,85,31,0.5)" }}
-            >
-              <span className="u-mono !text-ember">Download Aurea</span>
-              <span className="text-ember transition-transform group-hover:translate-y-0.5">
-                ↓
-              </span>
-            </a>
-            <div className="u-mono">
-              <div>
-                {BUILD.platform} · v{BUILD.version}
-              </div>
-              {/* Unsigned dev build: say so here, not at the security prompt. */}
-              <div className="mt-1 opacity-55">
-                {BUILD.size} · unsigned build, SmartScreen will warn
-              </div>
-            </div>
+          <div className="mt-12">
+            {active ? (
+              <>
+                <div className="flex flex-wrap items-center gap-x-8 gap-y-5">
+                  <DownloadButton platform={active} />
+                  <div className="u-mono">
+                    <div>
+                      {active.spec} · v{build.version}
+                    </div>
+                    <div className="mt-1 opacity-55">
+                      {active.size} · {active.caveat}
+                    </div>
+                  </div>
+                </div>
+                <PlatformSwitch
+                  platforms={offered}
+                  active={active.id}
+                  onSelect={setChosen}
+                />
+              </>
+            ) : (
+              <NoBuildYet releasesUrl={build.releasesUrl} />
+            )}
           </div>
 
         </div>
@@ -594,18 +719,11 @@ function AureaPage() {
             <div className="mt-10 flex flex-wrap items-center gap-6">
               {/* The visitor who read the whole page should not have to scroll
                   back up to act on it. */}
-              <a
-                href={BUILD.href}
-                data-magnetic
-                className="group inline-flex items-baseline gap-3 border border-ember/60 px-6 py-4 text-pumice no-underline transition-colors hover:border-ember"
-                style={{ boxShadow: "0 0 24px -8px rgba(255,85,31,0.45)" }}
-              >
-                <span className="u-mono !text-ember">Download Aurea</span>
-                <span className="u-mono opacity-50">{BUILD.platform}</span>
-                <span className="text-ember transition-transform group-hover:translate-y-0.5">
-                  ↓
-                </span>
-              </a>
+              {active ? (
+                <DownloadButton platform={active} compact />
+              ) : (
+                <NoBuildYet releasesUrl={build.releasesUrl} />
+              )}
               {/* The show is unannounced, so the studio page carries the story
                   until it has a door of its own. */}
               <Link to="/studio" data-magnetic className="u-mono !text-pumice no-underline">
