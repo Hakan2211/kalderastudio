@@ -34,9 +34,10 @@ export type PlatformBuild = {
   /** Human-readable size, or the installer kind when we have no asset to measure. */
   size: string;
   /**
-   * The security caveat for this OS. `forceCodeSigning: false` in the app repo
-   * applies to every target, so each platform gets the warning its own OS will
-   * actually show — said here rather than discovered at the security prompt.
+   * What this OS will do about an unsigned build, phrased as the way through
+   * rather than the complaint — said on the button rather than discovered at
+   * the security prompt. The "unsigned" part is stated once for all platforms
+   * beside the row, so it is deliberately not repeated here.
    */
   caveat: string;
 };
@@ -72,7 +73,9 @@ const PLATFORMS: Array<{
     id: "windows",
     label: "Windows",
     spec: "Windows · 64-bit",
-    caveat: "unsigned build, SmartScreen will warn",
+    // "More info" is the non-obvious half: SmartScreen hides "Run anyway"
+    // behind it, and without that hint the warning reads as a dead end.
+    caveat: "SmartScreen: More info → Run anyway",
     match: [
       // The named x64 installer, then any non-arm64 .exe. Alphabetical order
       // would hand an ARM build to every desktop that asks, because `arm64`
@@ -89,7 +92,7 @@ const PLATFORMS: Array<{
     // Unsigned and un-notarised, Gatekeeper refuses a plain double-click and
     // says the app "is damaged" — which reads as a corrupt download rather than
     // a signing gap. Give the actual way in.
-    caveat: "unsigned build, right-click → Open the first time",
+    caveat: "right-click → Open the first time",
     match: [
       // A universal binary serves both Macs, so it outranks either single-arch
       // build. Failing that prefer arm64: every Mac sold since 2020 is one, and

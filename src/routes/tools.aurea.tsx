@@ -29,10 +29,13 @@ export const Route = createFileRoute("/tools/aurea")({
 });
 
 /**
- * Which button to light up first. The server has no idea what the visitor is
- * running, so SSR commits to the first platform and the real answer arrives
- * after mount — an effect, not a render-time read, so hydration still matches
- * the markup the server sent.
+ * Which button to light up. The server has no idea what the visitor is running,
+ * so the answer arrives after mount — an effect, not a render-time read, so
+ * hydration still matches the markup the server sent.
+ *
+ * Detection only decides emphasis and order here, never visibility: every
+ * platform with a build stays on the page whatever this returns. A wrong guess
+ * costs a visitor nothing but a glance one button to the right.
  */
 function useDetectedPlatform(): PlatformId | null {
   const [detected, setDetected] = useState<PlatformId | null>(null);
@@ -50,11 +53,30 @@ function useDetectedPlatform(): PlatformId | null {
 }
 
 /**
- * The download, used twice — once with the hero and once at the foot of the
- * page, so whoever read the whole tour does not scroll back up. Only ever
- * rendered for a platform that has a real asset behind it.
+ * One platform's download, as a button that describes itself.
+ *
+ * This replaced a single button plus a row of tab-like switches. The switches
+ * read as metadata rather than controls — dim, small, and sitting under a lit
+ * CTA that already said "Windows" — so a Mac visitor whose detection missed,
+ * or who arrived before hydration, saw the wrong download shouting and the
+ * right one whispering. Two buttons cost one line of width at this count and
+ * remove the guess entirely.
+ *
+ * Arch and size live inside the button because the specs used to float in a
+ * block beside it, which cannot survive a second button and was easy to skim
+ * past anyway. Everything you need to judge a download is now in the thing you
+ * click.
  */
-function DownloadButton({ platform, compact }: { platform: PlatformBuild; compact?: boolean }) {
+function DownloadButton({
+  platform,
+  primary,
+  compact,
+}: {
+  platform: PlatformBuild;
+  /** the visitor's own OS — lit, and pulled to the front of the row */
+  primary: boolean;
+  compact?: boolean;
+}) {
   return (
     <a
       href={platform.href}
@@ -62,18 +84,44 @@ function DownloadButton({ platform, compact }: { platform: PlatformBuild; compac
       // asset URLs already serve Content-Disposition: attachment, so the click
       // starts the file rather than navigating away.
       data-magnetic
-      className={`group inline-flex items-baseline gap-3 border border-ember/60 ${
-        compact ? "px-6" : "px-7"
-      } py-4 text-pumice no-underline transition-colors hover:border-ember`}
+      // Order, not DOM position: the server cannot know the platform, so the
+      // markup ships in a fixed order and CSS reorders it after mount. Nothing
+      // reflows and hydration has nothing to disagree about.
       style={{
-        boxShadow: compact
-          ? "0 0 24px -8px rgba(255,85,31,0.45)"
-          : "0 0 28px -8px rgba(255,85,31,0.5)",
+        order: primary ? -1 : 0,
+        boxShadow: primary ? "0 0 28px -8px rgba(255,85,31,0.5)" : undefined,
       }}
+      // The caveat is the longest line, so without a cap it sets the button's
+      // width and pushes the pair onto separate rows well before a phone —
+      // side by side is the whole point. Capped, it wraps instead, and the
+      // flex row stretches both buttons to the taller one's height.
+      className={`group flex min-w-[15rem] max-w-[20rem] flex-1 flex-col gap-1 border no-underline transition-colors ${
+        compact ? "px-6 py-3.5" : "px-7 py-4"
+      } ${
+        primary
+          ? "border-ember/60 hover:border-ember"
+          : "border-charcoal hover:border-ember/60"
+      }`}
     >
-      <span className="u-mono !text-ember">Download for {platform.label}</span>
-      {compact && <span className="u-mono opacity-50">{platform.spec}</span>}
-      <span className="text-ember transition-transform group-hover:translate-y-0.5">↓</span>
+      <span className="flex items-baseline justify-between gap-6">
+        <span className={`u-mono ${primary ? "!text-ember" : "!text-pumice"}`}>
+          Download for {platform.label}
+        </span>
+        <span
+          className={`transition-transform group-hover:translate-y-0.5 ${
+            primary ? "text-ember" : "text-pumice/70"
+          }`}
+        >
+          ↓
+        </span>
+      </span>
+      <span className="u-mono opacity-55">
+        {platform.spec} · {platform.size}
+      </span>
+      {/* The OS's own objection, and the way past it. Per-button because the
+          answer differs by platform — joined into one shared line it read as
+          "unsigned build · unsigned build · unsigned build". */}
+      <span className="u-mono opacity-40">{platform.caveat}</span>
     </a>
   );
 }
@@ -105,42 +153,39 @@ function NoBuildYet({ releasesUrl }: { releasesUrl: string }) {
 }
 
 /**
- * The platform switch, shown only when there is genuinely a choice. A Mac
- * visitor lands on macOS already selected, but the row stays visible either
- * way: people download for the machine in the next room as often as the one
- * they are sitting at.
+ * Every build there is, side by side, with the visitor's own OS lit and first.
+ * People download for the machine in the next room as often as the one they
+ * are sitting at, so nothing here is hidden behind a choice.
  */
-function PlatformSwitch({
+function DownloadRow({
   platforms,
-  active,
-  onSelect,
+  detected,
+  version,
+  compact,
 }: {
   platforms: Array<PlatformBuild>;
-  active: PlatformId;
-  onSelect: (id: PlatformId) => void;
+  detected: PlatformId | null;
+  version: string;
+  compact?: boolean;
 }) {
-  if (platforms.length < 2) return null;
-
   return (
-    <div className="u-mono mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
-      {platforms.map((p) => {
-        const isActive = p.id === active;
-        return (
-          <button
+    <div>
+      <div className="flex flex-wrap gap-4">
+        {platforms.map((p) => (
+          <DownloadButton
             key={p.id}
-            type="button"
-            onClick={() => onSelect(p.id)}
-            aria-pressed={isActive}
-            className={`border-b pb-1 transition-colors ${
-              isActive
-                ? "border-ember !text-ember"
-                : "border-transparent opacity-55 hover:border-charcoal hover:opacity-90"
-            }`}
-          >
-            {p.label}
-          </button>
-        );
-      })}
+            platform={p}
+            // Before the effect lands nothing is lit rather than the wrong
+            // thing: a Mac visitor should never catch Windows glowing at them,
+            // even for one frame.
+            primary={p.id === detected}
+            compact={compact}
+          />
+        ))}
+      </div>
+      {/* Version and the signing status are the same whatever you click, so
+          they are said once here rather than repeated in every button. */}
+      <p className="u-mono mt-4 opacity-55">v{version} · unsigned builds</p>
     </div>
   );
 }
@@ -379,18 +424,12 @@ function AureaPage() {
   // at all rather than advertised as missing.
   const offered = build.platforms.filter((p) => p.available);
 
-  // Explicit choice wins over detection, and detection wins over the SSR
-  // default — so a Mac visitor who clicked "Windows" to grab the installer for
-  // another machine does not get silently switched back when the effect lands.
-  // Detection is ignored when that platform has no build: a Mac visitor is
-  // shown the Windows installer that exists, not an empty state.
-  const [chosen, setChosen] = useState<PlatformId | null>(null);
+  // Every offered build is on the page, so detection no longer picks *which*
+  // download a visitor gets — only which one is lit and sits first. When it is
+  // wrong, or when the detected OS has no build, the row still shows every
+  // installer that exists and nothing is unreachable.
   const detected = useDetectedPlatform();
-  const active =
-    offered.find((p) => p.id === chosen) ??
-    offered.find((p) => p.id === detected) ??
-    offered[0] ??
-    null;
+  const hasBuilds = offered.length > 0;
 
   return (
     <main id="main" ref={ref} className="relative min-h-screen bg-obsidian text-pumice">
@@ -422,25 +461,12 @@ function AureaPage() {
           {/* The download is the page's reason to exist, so it sits with the
               hero rather than at the bottom of the tour. */}
           <div className="mt-12">
-            {active ? (
-              <>
-                <div className="flex flex-wrap items-center gap-x-8 gap-y-5">
-                  <DownloadButton platform={active} />
-                  <div className="u-mono">
-                    <div>
-                      {active.spec} · v{build.version}
-                    </div>
-                    <div className="mt-1 opacity-55">
-                      {active.size} · {active.caveat}
-                    </div>
-                  </div>
-                </div>
-                <PlatformSwitch
-                  platforms={offered}
-                  active={active.id}
-                  onSelect={setChosen}
-                />
-              </>
+            {hasBuilds ? (
+              <DownloadRow
+                platforms={offered}
+                detected={detected}
+                version={build.version}
+              />
             ) : (
               <NoBuildYet releasesUrl={build.releasesUrl} />
             )}
@@ -716,14 +742,22 @@ function AureaPage() {
               production right now. What you saw above is the working tool, not
               a trailer.
             </p>
-            <div className="mt-10 flex flex-wrap items-center gap-6">
-              {/* The visitor who read the whole page should not have to scroll
-                  back up to act on it. */}
-              {active ? (
-                <DownloadButton platform={active} compact />
+            {/* The visitor who read the whole page should not have to scroll
+                back up to act on it. The row gets its own line here: two
+                buttons and the two links side by side wrapped into a hedge. */}
+            <div className="mt-10">
+              {hasBuilds ? (
+                <DownloadRow
+                  platforms={offered}
+                  detected={detected}
+                  version={build.version}
+                  compact
+                />
               ) : (
                 <NoBuildYet releasesUrl={build.releasesUrl} />
               )}
+            </div>
+            <div className="mt-8 flex flex-wrap items-center gap-6">
               {/* The show is unannounced, so the studio page carries the story
                   until it has a door of its own. */}
               <Link to="/studio" data-magnetic className="u-mono !text-pumice no-underline">
